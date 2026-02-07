@@ -3,19 +3,30 @@ import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import logo from "./assets/logo.png";
 
+const formatPrice = (number) => {
+  const val = parseFloat(number);
+  if (isNaN(val)) return "Rs. 0.00";
+  return val.toFixed(2);
+};
+
 function App() {
-  const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const itemsPerPage = 5;
+  const [queue, setQueue] = useState([]);
   const [token, setToken] = useState(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState("");
   const [locations, setLocations] = useState([]);
+  const [quantities, setQuantities] = useState({});
+  const [searchTerm, setSearchTerm] = useState("");
   const [loginError, setLoginError] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState("");
+  const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
 
-  // Apply theme to document
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
@@ -25,14 +36,7 @@ function App() {
     setTheme(theme === "dark" ? "light" : "dark");
   };
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [queue, setQueue] = useState([]);
-  const [quantities, setQuantities] = useState({});
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
-
-  // Fetch locations on mount
+  // Fetch locations
   useEffect(() => {
     async function getLocations() {
       try {
@@ -145,7 +149,7 @@ function App() {
         product.product_name_en ||
         product.name ||
         "Unknown",
-      price: parseFloat(product.selling_price || product.price || 0),
+      price: formatPrice(product.selling_price || product.price || 0),
       qty: qty,
       barcode:
         product.barcode ||
@@ -409,7 +413,7 @@ function App() {
                       p.product_name_en ||
                       p.name ||
                       "Unknown";
-                    const price = p.selling_price || p.price || "0.00";
+                    const price = formatPrice(p.selling_price || p.price || 0);
 
                     const productWithId = { ...p, id };
 

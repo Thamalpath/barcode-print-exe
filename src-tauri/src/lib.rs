@@ -8,7 +8,7 @@ mod config;
 struct PrintItem {
     code: String,
     name: String,
-    price: f64,
+    price: String,
     qty: i32,
     barcode: String,
 }
@@ -42,7 +42,7 @@ fn print_labels(items: Vec<PrintItem>) -> Result<String, String> {
         };
 
         for _ in 0..item.qty {
-             writeln!(file, "{},{},{:.2},{},{}", item.code, name, item.price, 1, item.barcode).map_err(|e| e.to_string())?;
+             writeln!(file, "{},{},{},{}", item.code, name, item.price, item.barcode).map_err(|e| e.to_string())?;
         }
     }
 
