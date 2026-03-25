@@ -20,11 +20,15 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loginError, setLoginError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [priceLevels, setPriceLevels] = useState([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [pendingProduct, setPendingProduct] = useState(null);
+  const [showPriceModal, setShowPriceModal] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState("");
+  const [isFetchingPriceLevels, setIsFetchingPriceLevels] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem("theme") || "dark");
 
   useEffect(() => {
@@ -121,7 +125,12 @@ function App() {
   const performSearch = async (term) => {
     try {
       const products = await invoke("search_products", { term, token });
-      setSearchResults(products);
+      // Ensure every product has a stable ID
+      const productsWithIds = products.map((p, idx) => ({
+        ...p,
+        id: p.id || p.prod_code || p.product_code || `temp-${idx}-${term}`,
+      }));
+      setSearchResults(productsWithIds);
       setCurrentPage(1);
     } catch (err) {
       console.error("Search failed", err);
@@ -136,9 +145,76 @@ function App() {
     }
   };
 
-  const addToQueue = (product) => {
+  const handleAddClick = async (product) => {
+    console.log("Add clicked for product:", product);
+    const qty = parseInt(quantities[product.id] || 1);
+    if (qty <= 0) {
+      alert("Please enter a valid quantity");
+      return;
+    }
+
+    setPendingProduct(product);
+    setShowPriceModal(true);
+    setIsFetchingPriceLevels(true);
+
+    const prod_code =
+      product.prod_code || product.product_code || product.code || "";
+    if (!String(prod_code).trim()) {
+      setIsFetchingPriceLevels(false);
+      setShowPriceModal(false);
+      setPendingProduct(null);
+      alert(
+        "This product has no prod_code, so price levels cannot be fetched.",
+      );
+      return;
+    }
+
+    try {
+      const levels = await invoke("fetch_price_levels", {
+        token,
+        prodCode: prod_code,
+      });
+      setPriceLevels(Array.isArray(levels) ? levels : []);
+    } catch (err) {
+      console.error("Failed to fetch price levels", err);
+      setPriceLevels([]);
+      alert("Could not fetch additional price levels: " + err);
+    } finally {
+      setIsFetchingPriceLevels(false);
+    }
+  };
+
+  const handlePriceSelect = (level) => {
+    let selectedPrice =
+      pendingProduct.selling_price || pendingProduct.price || 0;
+
+    if (level) {
+      if (level.selling_price) {
+        selectedPrice = level.selling_price;
+      } else if (level.price) {
+        selectedPrice = level.price;
+      } else {
+        // Fallback to name/code lookup in product
+        const priceKey = level.code || level.name || level.id;
+        if (pendingProduct[priceKey]) {
+          selectedPrice = pendingProduct[priceKey];
+        }
+      }
+    }
+
+    addToQueue(pendingProduct, selectedPrice);
+    setShowPriceModal(false);
+    setPendingProduct(null);
+  };
+
+  const addToQueue = (product, overridePrice = null) => {
     const qty = parseInt(quantities[product.id] || 1);
     if (qty <= 0) return;
+
+    const priceToUse =
+      overridePrice !== null
+        ? overridePrice
+        : product.selling_price || product.price || 0;
 
     const mapped = {
       id: product.id,
@@ -149,7 +225,7 @@ function App() {
         product.product_name_en ||
         product.name ||
         "Unknown",
-      price: formatPrice(product.selling_price || product.price || 0),
+      price: formatPrice(priceToUse),
       qty: qty,
       barcode:
         product.barcode ||
@@ -404,7 +480,7 @@ function App() {
                 </thead>
                 <tbody>
                   {currentItems.map((p) => {
-                    const id = p.id || Math.random();
+                    const id = p.id;
                     const code =
                       p.prod_code || p.product_code || p.code || "N/A";
                     const name =
@@ -414,8 +490,6 @@ function App() {
                       p.name ||
                       "Unknown";
                     const price = formatPrice(p.selling_price || p.price || 0);
-
-                    const productWithId = { ...p, id };
 
                     return (
                       <tr key={id}>
@@ -438,9 +512,14 @@ function App() {
                         <td>
                           <button
                             className="action-btn"
-                            onClick={() => addToQueue(productWithId)}
+                            disabled={
+                              isFetchingPriceLevels && pendingProduct?.id === id
+                            }
+                            onClick={() => handleAddClick(p)}
                           >
-                            Add
+                            {isFetchingPriceLevels && pendingProduct?.id === id
+                              ? "..."
+                              : "Add"}
                           </button>
                         </td>
                       </tr>
@@ -477,6 +556,7 @@ function App() {
                 <thead>
                   <tr>
                     <th>Name</th>
+                    <th>Price</th>
                     <th>Qty</th>
                     <th>Action</th>
                   </tr>
@@ -485,6 +565,7 @@ function App() {
                   {queue.map((item, idx) => (
                     <tr key={idx}>
                       <td>{item.name}</td>
+                      <td>{item.price}</td>
                       <td>{item.qty}</td>
                       <td>
                         <button
@@ -520,6 +601,104 @@ function App() {
           )}
         </div>
       </div>
+
+      {showPriceModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2>Select Price Level</h2>
+              <p>{pendingProduct?.prod_name || pendingProduct?.name}</p>
+            </div>
+            <div className="price-level-list">
+              {/* Default Price */}
+              <div
+                className="price-level-item"
+                onClick={() => handlePriceSelect(null)}
+              >
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <span className="price-level-name">
+                    Default Selling Price
+                  </span>
+                  <span className="price-level-desc">
+                    Default price from product record
+                  </span>
+                </div>
+                <span className="price-level-value">
+                  {formatPrice(
+                    pendingProduct?.selling_price || pendingProduct?.price || 0,
+                  )}
+                </span>
+              </div>
+
+              {isFetchingPriceLevels && (
+                <div style={{ textAlign: "center", padding: "1.5rem" }}>
+                  <div className="loading-spinner"></div>
+                  <p
+                    style={{
+                      color: "var(--text-muted)",
+                      fontSize: "0.85rem",
+                      marginTop: "0.5rem",
+                    }}
+                  >
+                    Fetching additional price levels...
+                  </p>
+                </div>
+              )}
+
+              {/* Dynamic Price Levels */}
+              {priceLevels.map((level, idx) => {
+                const priceValue =
+                  level.selling_price ||
+                  level.wholesale_price ||
+                  level.price ||
+                  0;
+
+                return (
+                  <div
+                    key={level.id || idx}
+                    className="price-level-item"
+                    onClick={() => handlePriceSelect(level)}
+                  >
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <span className="price-level-name">
+                        {level.name || `Price Level ${idx + 1}`}
+                      </span>
+                      {level.wholesale_price > 0 && (
+                        <span className="price-level-desc">
+                          Wholesale: {formatPrice(level.wholesale_price)}
+                        </span>
+                      )}
+                    </div>
+                    <span className="price-level-value">
+                      {formatPrice(priceValue)}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {priceLevels.length === 0 && !isFetchingPriceLevels && (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: "1rem",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  No additional price levels found.
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                className="cancel-btn"
+                onClick={() => setShowPriceModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

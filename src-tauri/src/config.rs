@@ -9,6 +9,7 @@ pub struct AppConfig {
     pub template_file_path: String,
     pub login_api_url: String,
     pub locations_api_url: String,
+    pub price_levels_api_url: String,
 }
 
 fn get_exe_dir_config_path() -> PathBuf {
@@ -33,6 +34,7 @@ pub fn get_config() -> Result<AppConfig, String> {
             template_file_path: String::new(),
             login_api_url: String::new(),
             locations_api_url: String::new(),
+            price_levels_api_url: String::new(),
         };
         let mut count = 0;
         
@@ -47,13 +49,14 @@ pub fn get_config() -> Result<AppConfig, String> {
                     "TEMPLATE_FILE_PATH" => { config.template_file_path = value.to_string(); count += 1; },
                     "LOGIN_API_URL" => { config.login_api_url = value.to_string(); count += 1; },
                     "LOCATIONS_API_URL" => { config.locations_api_url = value.to_string(); count += 1; },
+                    "PRICE_LEVELS_API_URL" => { config.price_levels_api_url = value.to_string(); count += 1; },
                     _ => {}
                 }
             }
         }
         
         // Return values ONLY if they were actually found in the file
-        if count == 5 && !config.search_api_url.is_empty() {
+        if count == 6 && !config.search_api_url.is_empty() {
             return Ok(config);
         }
     }
@@ -63,7 +66,8 @@ pub fn get_config() -> Result<AppConfig, String> {
                     DATA_FILE_PATH=C:\\barcode\\venpaa_barcode.txt\n\
                     TEMPLATE_FILE_PATH=C:\\barcode\\STIC33X21.btw\n\
                     LOGIN_API_URL=https://venpaaapi.onimtaitsl.com/api/login\n\
-                    LOCATIONS_API_URL=https://venpaaapi.onimtaitsl.com/api/locations";
+                    LOCATIONS_API_URL=https://venpaaapi.onimtaitsl.com/api/locations\n\
+                    PRICE_LEVELS_API_URL=https://venpaaapi.onimtaitsl.com/api/price-levels";
     
     let _ = fs::write(&config_path, template);
     let _ = fs::create_dir_all(r"C:\barcode");
